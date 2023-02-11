@@ -21,12 +21,16 @@ jobs:
           command: fmt
           args: --all -- --check
 
-  clippy_check:
+  check_clippy:
+    name: Checking clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - run: rustup component add clippy
-      - uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features
+    - uses: actions/checkout@master
+    - uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        components: clippy
+        override: true
+
+    - name: clippy
+      run: cargo clippy -- -Dwarnings
