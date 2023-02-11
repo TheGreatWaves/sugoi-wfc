@@ -8,3 +8,7 @@ edition = "2021"
 [dependencies]
 check = "1.0.0"
 fmt = "0.1.0"
+clap = { version = "4.1.4", features = ["derive"] }
+image = "0.24.5"
+ndarray = "*"
+bit-set = "0.5.3"
