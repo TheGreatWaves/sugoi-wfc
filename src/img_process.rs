@@ -8,13 +8,14 @@ use std::{
 
 use ndarray::{ArcArray, ArrayBase, Axis, Dim, Ix2, OwnedArcRepr, Slice};
 
-// Two dimensional array
+// Shared two dimensional array
 type ArcArray2<A> = ArcArray<A, Ix2>;
 
 // A value indicating the position of a pixel
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone, Debug)]
 struct Pixel2(u32);
 
+// A 2D section of the image
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Sample2<P>(ArcArray2<P>);
 
@@ -29,6 +30,7 @@ impl Neg for Offset2 {
     }
 }
 
+// Pixel colour value
 type Rgb = image::Rgba<u8>;
 
 pub struct ProcessedInfo {
@@ -64,6 +66,7 @@ fn create_palette_map(palette_set: HashSet<Rgb>) -> HashMap<Rgb, Pixel2> {
 
 /**
  * Copy an image into a buffer.
+ * This is used for further construction.
  */
 fn create_img_buffer(img: &DynamicImage) -> ImageBuffer<Rgb, Vec<u8>> {
     let mut buf = ImageBuffer::<Rgb, _>::new(img.width(), img.height());
@@ -144,20 +147,38 @@ fn generate_collision_map(
     section_count: &usize,
 ) -> HashMap<Offset2, Vec<BitSet>> {
     let mut collide = HashMap::new();
-    let check_at_offset = |dx, dy, lx, ly, rx, ry| {
+
+    /*
+     * Check whether two samples can seamlessly join.
+     *
+     * dx: Length of the region
+     * dy: Height of the region
+     * lx: Starting x position on the left sample
+     * ly: Starting y position on the left sample
+     * rx: Starting x position on the right sample
+     * ry: Starting y position on the right sample
+     */
+    let check_at_offset = |region_length, region_height, lx, ly, rx, ry| {
         let mut bitsets = Vec::new();
-        for Sample2(l) in samples.iter() {
+        for Sample2(left) in samples.iter() {
+            // Create a bitset which helps us indicate whether
+            // a given sample is compatible with another.
             let mut bs = BitSet::with_capacity(samples.len());
-            'rcheck: for (s, Sample2(r)) in samples.iter().enumerate() {
-                for i in 0..dx {
-                    for j in 0..dy {
-                        let p_l = l[((lx + i), (ly + j))];
-                        let p_r = r[((rx + i), (ry + j))];
+
+            'others: for (s, Sample2(right)) in samples.iter().enumerate() {
+                // Check the region of sample 'right' WRT sample 'left'
+                // If the region is equivalent it means that they are compatible.
+                for i in 0..region_length {
+                    for j in 0..region_height {
+                        let p_l = left[((lx + i), (ly + j))];
+                        let p_r = right[((rx + i), (ry + j))];
                         if p_l != p_r {
-                            continue 'rcheck;
+                            // Mismatch, process the next one.
+                            continue 'others;
                         }
                     }
                 }
+                // Compatible
                 bs.insert(s);
             }
             bitsets.push(bs);
@@ -165,13 +186,37 @@ fn generate_collision_map(
         bitsets
     };
 
-    for dx in 0..*section_count {
-        for dy in 0..*section_count {
+    let n: usize = *section_count;
+    for dx in 0..n {
+        for dy in 0..n {
             let o_dx = dx as isize;
             let o_dy = dy as isize;
+
+            let region_length = section_count - dx;
+            let region_height = section_count - dy;
+
+            // Check for same orientation
             collide.insert(
                 Offset2(o_dx, o_dy),
-                check_at_offset(section_count - dx, section_count - dy, dx, dy, 0, 0),
+                check_at_offset(region_length, region_height, dx, dy, 0, 0),
+            );
+
+            // Check for 90 deg rotation
+            collide.insert(
+                Offset2(-o_dx, o_dy),
+                check_at_offset(region_length, region_height, 0, dy, dx, 0),
+            );
+
+            // Check for 180 deg rotation
+            collide.insert(
+                Offset2(o_dx, -o_dy),
+                check_at_offset(region_length, region_height, dx, 0, 0, dy),
+            );
+
+            // Check for 270 deg rotation
+            collide.insert(
+                Offset2(-o_dx, -o_dy),
+                check_at_offset(region_length, region_height, 0, 0, dx, dy),
             );
         }
     }
@@ -180,7 +225,7 @@ fn generate_collision_map(
 }
 
 /**
- * Creates a vector of the colours in the palette, sorted by their position.
+ * Creates a vector of the colours in the palette, sorted by their pixel position.
  */
 fn create_palette(palette_map: &HashMap<Rgb, Pixel2>) -> Vec<Rgb> {
     let mut vec: Vec<_> = palette_map.iter().map(|(&rgb, &px)| (rgb, px)).collect();
