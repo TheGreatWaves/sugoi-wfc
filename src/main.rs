@@ -1,12 +1,10 @@
 use clap::Parser;
-mod img_process;
+use cli::Args;
+extern crate image;
 
-#[derive(Parser, Default, Debug)]
-struct Args {
-    // Name of the image file
-    img_path: String,
-    n_dimensions: usize,
-}
+mod cli;
+mod data;
+mod image_reader;
 
 fn main() {
     // Parse CLI
@@ -16,5 +14,6 @@ fn main() {
     let img = image::open(args.img_path).expect("Failed to open image");
 
     // Process the image
-    img_process::process_img(&img, args.n_dimensions);
+    let mut image = image_reader::Image::new(img.width() as usize, img.height() as usize);
+    image.load(&img);
 }
